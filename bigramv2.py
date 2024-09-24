@@ -6,82 +6,97 @@ from torch.nn import functional as F
 batch_size = 64 # number of independent sequences to process in parallel
 block_size = 256 # number of tokens in a sequence. If this is 256, the nn will generate the 257th token
 max_iters = 5000 # number of iterations to train for
-eval_interval = 500
-learning_rate = 3e-4
-eval_iters = 200
-device = 'cuda' if torch.cuda.is_available() else 'cpu'
-n_embd = 384
-n_head = 6
-n_layer = 6
-dropout = 0.2
+eval_interval = 500 # interval at which we evaluate the loss function
+learning_rate = 3e-4 # How quickly we descend the gradient.
+eval_iters = 200 # Number of iterations to run the estimate_loss function
+device = 'cuda' if torch.cuda.is_available() else 'cpu' # If a gpu is available, use it.
+n_embd = 384 # embedding dimension. This is the dimensionality of the vectors that will be used to represent the tokens.
+n_head = 6 # number of attention heads. The more heads we have, the more information we can capture in the self-attention mechanism.
+n_layer = 6 # number of layers in the transformer model.
+dropout = 0.2 # probability of dropping out a neuron. This helps prevent overfitting.
 #-------------
 
-torch.manual_seed(1337)
+torch.manual_seed(1337) # Set the random seed for reproducibility
 with open('input.txt', 'r', encoding='utf-8') as f:
     text = f.read()
 
 # Here are all the unique characters that appear in this text
 chars = sorted(list(set(text)))
-vocab_size = len(chars)
+vocab_size = len(chars) # The number of unique tokens in the vocabulary
 
 # create a mapping from characters to integers
-stoi = { ch:i for i,ch in enumerate(chars) }
-itos = { i:ch for i,ch in enumerate(chars) }
+stoi = { ch:i for i,ch in enumerate(chars) } # enumerate returns an iterator for each character in chars. It returns a tuple of (index, character). Ex (0, 'a'), (1, 'b'), etc. The code wrapped around that creates a dictionary.
+itos = { i:ch for i,ch in enumerate(chars) } # Same thing here, but we are going from integers back to characters.
 encode = lambda s: [stoi[c] for c in s] # encoder: take a string, output a list of integers
 decode = lambda l: ''.join([itos[i] for i in l]) # decoder: take a list of integers, output a string
 
 # create the training dataset
 data = torch.tensor(encode(text), dtype=torch.long)
 n = int(0.9*len(data))
-train_data = data[:n]
-val_data = data[n:]
+train_data = data[:n] # First 90% of the data
+val_data = data[n:] # Last 10% of the data
 
 
 # data loading
 def get_batch(split):
     # generate a small batch of data of inputs x and targets y
-    data = train_data if split == 'train' else val_data
-    ix = torch.randint(len(data) - block_size, (batch_size,))
-    x = torch.stack([data[i:i+block_size] for i in ix])
-    y = torch.stack([data[i+1:i+block_size+1] for i in ix])
+    data = train_data if split == 'train' else val_data # If we are training, we use the training data, otherwise we use the validation data
+    ix = torch.randint(len(data) - block_size, (batch_size,)) # Randomly sample a batch of indices from the data. The minus block_size is because we need to have enough context to generate the next token.
+    x = torch.stack([data[i:i+block_size] for i in ix]) # Create the input sequences. We do this by taking the data, and slicing it into blocks of size block_size. We then stack these slices together to form a single tensor.
+    y = torch.stack([data[i+1:i+block_size+1] for i in ix]) # Create the target sequences. Same logic as above.
     return x, y
 
-@torch.no_grad()
-def estimate_loss():
-    out = {}
-    model.eval()
+@torch.no_grad() # Decorator to tell PyTorch that we are not going to call the autograd function. This means that no intermediate tensors will store computation graphs. Efficiency =)
+def estimate_loss(): # Estimates the loss of the model on the training and validation data.
+    out = {} # Initialize an empty dictionary to store the losses.
+    model.eval() # Set the model to evaluation mode. This is necessary because some layers, such as dropout, behave differently during training and evaluation.
     for split in ['train', 'val']:
         losses = torch.zeros(eval_iters)
         for k in range(eval_iters):
-            X, Y = get_batch(split)
-            logits, loss = model(X, Y)
-            losses[k] = loss.item()
-        out[split] = losses.mean()
-    model.train()
+            X, Y = get_batch(split) # Get a batch of data
+            logits, loss = model(X, Y) # Get the model's predictions and the loss
+            losses[k] = loss.item() # Store the loss
+        out[split] = losses.mean() # Store the mean loss for the split
+    model.train() # Set the model back to training mode
     return out
 
 class Head(nn.Module):
     #One head of self-attention
 
-    def __init__(self, head_size):
-        super().__init__()
-        self.key = nn.Linear(n_embd, head_size, bias=False)
-        self.query = nn.Linear(n_embd, head_size, bias=False)
-        self.value = nn.Linear(n_embd, head_size, bias=False)
-        self.register_buffer('tril', torch.tril(torch.ones(block_size, block_size)))
-        self.dropout = nn.Dropout(dropout)
+    def __init__(self, head_size): # head_size is the dimensionality of the keys, queries, and values.
+        super().__init__() # Initialize the parent class
+        self.key = nn.Linear(n_embd, head_size, bias=False) # Create a linear layer for the keys
+        self.query = nn.Linear(n_embd, head_size, bias=False) # Create a linear layer for the queries
+        self.value = nn.Linear(n_embd, head_size, bias=False) # Create a linear layer for the values
+        self.register_buffer('tril', torch.tril(torch.ones(block_size, block_size))) # Mask the upper triangle so we don't consider future tokens
+        self.dropout = nn.Dropout(dropout) # Randomly zeroes out elements to prevent overfitting
 
-    def forward(self, x):
-        B,T,C = x.shape
-        k = self.key(x) # (B,T,C)
-        q = self.query(x) # (B,T,C)
-        #compute attention scores ('affinities')
+    # B: Batch size, the number of sequences processed in parallel. In deep learning, processing
+    # multiple sequences in parallel (batch processing) is more efficient than processing them one by one. 
+    # The batch size determines how many sequences are processed simultaneously.
+    # If B = 4, it means that 4 sequences are being processed in parallel.
+
+    # T: Sequence length, the number of tokens in the input sequence.In language models, sequences are often 
+    # broken down into smaller chunks or windows. T represents the number of tokens in each chunk.
+    # If T = 8, it means that each sequence consists of 8 tokens.
+
+    # C: Channel size, the dimensionality of the input space.
+    # Each token in the sequence is represented as a one-hot vector of size C, 
+    # where C is the number of unique tokens in the vocabulary.
+    # If C = 65, it means that there are 65 unique tokens in the vocabulary.
+
+
+    def forward(self, x): # x is the input to the layer
+        B,T,C = x.shape # B is the batch size, T is the sequence length, C is the number of channels
+        k = self.key(x) # (B,T,C) dimensionality
+        q = self.query(x) # (B,T,C) dim
+        # compute attention scores ('affinities')
         wei = q @ k.transpose(-2, -1) * C**-0.5 # (B,T,C) @ (B,C,T) -> (B,T,T)
         wei = wei.masked_fill(self.tril[:T, :T]==0, float('-inf')) # (B,T,T)
         wei = F.softmax(wei, dim=-1) # (B,T,T)
-        wei = self.dropout(wei)
+        wei = self.dropout(wei) # Randomly zeroes out elements to prevent overfitting
         # perform the weighted aggregation of the values
-        v = self.value(x)
+        v = self.value(x) 
         out = wei @ v # (B,T,T) @ (B,T,C) -> (B,T,C)
         return out
     
