@@ -142,6 +142,7 @@ class Block(nn.Module):
         x = x + self.ffwd(self.ln2(x))
         return x
 
+# For more info on bigram models, see https://web.stanford.edu/~jurafsky/slp3/3.pdf
         
 class BigramLanguageModel(nn.Module):
 
