@@ -71,6 +71,7 @@ class Head(nn.Module):
         self.register_buffer('tril', torch.tril(torch.ones(block_size, block_size))) # Mask the upper triangle so we don't consider future tokens
         self.dropout = nn.Dropout(dropout) # Randomly zeroes out elements to prevent overfitting
 
+
     # B: Batch size, the number of sequences processed in parallel. In deep learning, processing
     # multiple sequences in parallel (batch processing) is more efficient than processing them one by one. 
     # The batch size determines how many sequences are processed simultaneously.
@@ -84,7 +85,6 @@ class Head(nn.Module):
     # Each token in the sequence is represented as a one-hot vector of size C, 
     # where C is the number of unique tokens in the vocabulary.
     # If C = 65, it means that there are 65 unique tokens in the vocabulary.
-
 
     def forward(self, x): # x is the input to the layer
         B,T,C = x.shape # B is the batch size, T is the sequence length, C is the number of channels
@@ -142,7 +142,9 @@ class Block(nn.Module):
         x = x + self.ffwd(self.ln2(x))
         return x
 
+# The bigram model is the simplest type of language model. It predicts the next token based on the current token (only 2 tokens total, hence 'bi')
 # For more info on bigram models, see https://web.stanford.edu/~jurafsky/slp3/3.pdf
+
         
 class BigramLanguageModel(nn.Module):
 
