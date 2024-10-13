@@ -60,8 +60,25 @@ def estimate_loss(): # Estimates the loss of the model on the training and valid
     model.train() # Set the model back to training mode
     return out
 
+# Lets get to the self-attention part. In our language model, we want to have the historical context of the letters that came before us,
+# but the context that is important to us is dependent on what the previous characters actually were. For example, if the last letter
+# generated was a 'q', thats super interesting to know because know I'm basically gauranteed to generate a 'u'. But if the last letter was
+# a 'y', now I'm not so sure I want a 'u'. Maybe an 'o' makes more sense. Another way of putting this: our weighted affinities
+# shouldn't be uniform. This is an important distinction because up until now, our models had no concept of 'token identity' or 'what is
+# this token looking for?' It has always been a crude pattern recognition optimized from backpropagation. Suddenly, now we have a way to 
+# say 'these two tokens are really good together, do more of that!' 
+
+# Attention solves this by introducing keys and queries. Each token in our sequence is given a key and query. Roughly speaking,
+# the query tells us what the token is looking for, and the key tells us what the token has. We can take the query for a specific token and
+# compare it to the key for another token to see how similar they are. In the actual code, this is done using the 
+# dot product between the key and query. The higher the dot product, the more the key for one token aligns with the query for another token, 
+# and therefore the tokens are more aligned. When we take the dot products for all the tokens in the sequence, we get a matrix that 
+# tells us how aligned all the tokens are with each other! Ultimatley, these values
+
+# 
+
 class Head(nn.Module):
-    #One head of self-attention
+    # One head of self-attention
 
     def __init__(self, head_size): # head_size is the dimensionality of the keys, queries, and values.
         super().__init__() # Initialize the parent class
